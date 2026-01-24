@@ -1,5 +1,5 @@
--- Author：askfiy
--- Updated: 2022-05-26
+-- Author：lysanderlyu
+-- Updated: 2026-01-25
 
 local nvim_picgo = {}
 
@@ -170,6 +170,14 @@ function nvim_picgo.setup(conf)
         return
     end
 
+    if vim.fn.executable("convert") ~= 1 then
+        vim.api.nvim_echo(
+            { { "Missing convert or (imagemagick) dependencies, the Nvim-picgo may not convert the bmp to png if the clipboard has bmp file (such as using WSL)", "WarnMsg" } },
+            true,
+            {}
+        )
+    end
+
     default_config = vim.tbl_extend("force", default_config, conf or {})
 
     -- Create autocommand
@@ -197,29 +205,37 @@ function nvim_picgo.upload_clipboard()
     if default_config.temporary_storage then
         local allowed_types = { "png", "bmp", "jpg", "gif" }
 
-        local command = { "xclip -selection clipboard -t image/%s -o 2>/dev/null; echo $?", "xclip -selection clipboard -t image/%s -o > %s" }
+        local command = { "xclip -selection clipboard -t image/%s -o 2>/dev/null; echo $?", 
+                          "xclip -selection clipboard -t image/%s -o > %s" }
 
         if is_wayland() then
-            command = { "wl-paste --list-types | grep -qi image/%s; echo $?", "wl-paste --no-newline --type image/%s > %s"}
+            command = { "wl-paste --list-types | grep -qi image/%s; echo $?", 
+                        "wl-paste --no-newline --type image/%s > %s" }
         end
 
         for _, mime_type in ipairs(allowed_types) do
-            local has_image = vim.fn.system(
-                (command[1]):format(
-                    mime_type
-                )
-            )
+            local has_image = vim.fn.system((command[1]):format(mime_type))
 
             if vim.fn.trim(has_image) ~= "1" then
-                generate_temporary_file(mime_type)
+                -- Generate temporary file
+                generate_temporary_file(mime_type) -- sets random_filename
 
-                os.execute(
-                    (command[2]):format(
-                        mime_type,
-                        random_filename
-                    )
-                )
+                -- Save clipboard image to temp file
+                os.execute((command[2]):format(mime_type, random_filename))
 
+                -- If BMP, convert to PNG
+                if mime_type == "bmp" then
+                    local png_file = random_filename:gsub("%.bmp$", ".png")
+                    local convert_cmd = string.format('convert "%s" "%s"', random_filename, png_file)
+                    local ret = os.execute(convert_cmd)
+                    if ret ~= 0 or vim.fn.filereadable(png_file) == 0 then
+                        vim.notify("Failed to convert BMP to PNG", "error", { title = "Nvim-picgo" })
+                        return
+                    end
+                    random_filename = png_file  -- use PNG file for upload
+                end
+
+                -- Upload via PicGo
                 vim.fn.jobstart({ "picgo", "u", random_filename }, {
                     on_stdout = stdout_callbackfn,
                     on_exit = onexit_callbackfn,
@@ -230,7 +246,7 @@ function nvim_picgo.upload_clipboard()
         end
 
         vim.notify(
-            "Clipboard not found image",
+            "Clipboard not found image or not in supported format: " .. table.concat(allowed_types, ", "),
             "error",
             { title = "Nvim-picgo" }
         )
@@ -238,6 +254,7 @@ function nvim_picgo.upload_clipboard()
         return
     end
 
+    -- If temporary_storage is false, just upload from clipboard directly
     vim.fn.jobstart({ "picgo", "u" }, {
         on_stdout = stdout_callbackfn,
         on_exit = onexit_callbackfn,
@@ -267,5 +284,6 @@ function nvim_picgo.upload_imagefile()
         on_exit = onexit_callbackfn,
     })
 end
+
 
 return nvim_picgo
