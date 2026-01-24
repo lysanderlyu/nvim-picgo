@@ -195,7 +195,7 @@ end
 
 function nvim_picgo.upload_clipboard()
     if default_config.temporary_storage then
-        local allowed_types = { "png", "jpg", "gif" }
+        local allowed_types = { "png", "bmp", "jpg", "gif" }
 
         local command = { "xclip -selection clipboard -t image/%s -o 2>/dev/null; echo $?", "xclip -selection clipboard -t image/%s -o > %s" }
 
