@@ -240,17 +240,30 @@ function nvim_picgo.upload_clipboard()
         for _, mime_type in ipairs(allowed_types) do
             local has_image = vim.fn.system((command[1]):format(mime_type))
 
-            if vim.fn.trim(has_image) ~= "1" then
+            if vim.fn.trim(has_image) == "0" then
                 -- Generate temporary file
                 generate_temporary_file(mime_type) -- sets random_filename
 
-
-                -- Save clipboard image to temp file
-                os.execute((command[2]):format(mime_type, random_filename))
+                local cmd = (command[2]):format(mime_type, random_filename)
+                local output = vim.fn.system(cmd)
+                local status = vim.v.shell_error
+                
+                if status ~= 0 then
+                    vim.notify(
+                        "Clipboard save failed\n"
+                        .. "cmd: " .. cmd .. "\n"
+                        .. "exit: " .. status .. "\n"
+                        .. "output:\n" .. output,
+                        "error",
+                        { title = "Nvim-picgo" }
+                    )
+                    onexit_callbackfn()
+                    return
+                end
 
                 -- Check the generated file size
                 if vim.fn.getfsize(random_filename) <= 0 then
-                    vim.notify("Generated temp image file is empty", "error", { title = "Nvim-picgo" })
+                    vim.notify("Generated temp image file " .. random_filename .. " is empty", "error", { title = "Nvim-picgo" })
                     -- Clear the lock sync flag
                     onexit_callbackfn()
                     return
