@@ -145,6 +145,7 @@ local function sync_upload(callback)
             else
                 vim.api.nvim_echo({ { msg, "ErrorMsg" } }, true, {})
             end
+            return
         end
         sync_lock = true
         callback()
@@ -220,16 +221,29 @@ function nvim_picgo.upload_clipboard()
                 -- Generate temporary file
                 generate_temporary_file(mime_type) -- sets random_filename
 
+
                 -- Save clipboard image to temp file
                 os.execute((command[2]):format(mime_type, random_filename))
+
+                -- Check the generated file size
+                if vim.fn.getfsize(random_filename) <= 0 then
+                    vim.notify("Generated temp image file is empty", "error", { title = "Nvim-picgo" })
+                    -- Clear the lock sync flag
+                    onexit_callbackfn()
+                    return
+                end
 
                 -- If BMP, convert to PNG
                 if mime_type == "bmp" then
                     local png_file = random_filename:gsub("%.bmp$", ".png")
                     local convert_cmd = string.format('convert "%s" "%s"', random_filename, png_file)
                     local ret = os.execute(convert_cmd)
+                    -- Remove the bmp file
+                    os.remove(random_filename)
                     if ret ~= 0 or vim.fn.filereadable(png_file) == 0 then
                         vim.notify("Failed to convert BMP to PNG", "error", { title = "Nvim-picgo" })
+                        -- Clear the lock sync flag
+                        onexit_callbackfn()
                         return
                     end
                     random_filename = png_file  -- use PNG file for upload
