@@ -152,6 +152,11 @@ local function sync_upload(callback)
     end
 end
 
+local function is_macos()
+    return vim.loop.os_uname().sysname == "Darwin"
+end
+
+
 function nvim_picgo.setup(conf)
     if vim.fn.executable("picgo") ~= 1 then
         vim.api.nvim_echo(
@@ -162,13 +167,26 @@ function nvim_picgo.setup(conf)
         return
     end
 
-    if default_config.temporary_storage and vim.fn.executable("xclip") ~= 1 then
-        vim.api.nvim_echo(
-            { { "Missing xclip dependencies", "ErrorMsg" } },
-            true,
-            {}
-        )
-        return
+    if default_config.temporary_storage then
+        if is_macos() then
+            if vim.fn.executable("pngpaste") ~= 1 then
+                vim.api.nvim_echo(
+                    { { "Missing pngpaste dependency on macOS", "ErrorMsg" } },
+                    true,
+                    {}
+                )
+                return
+            end
+        else
+            if vim.fn.executable("xclip") ~= 1 then
+                vim.api.nvim_echo(
+                    { { "Missing xclip dependencies", "ErrorMsg" } },
+                    true,
+                    {}
+                )
+                return
+            end
+        end
     end
 
     if vim.fn.executable("convert") ~= 1 then
@@ -209,7 +227,12 @@ function nvim_picgo.upload_clipboard()
         local command = { "xclip -selection clipboard -t image/%s -o 2>/dev/null; echo $?", 
                           "xclip -selection clipboard -t image/%s -o > %s" }
 
-        if is_wayland() then
+        if is_macos() then
+            local command = {
+              "pngpaste - | grep -qi %s; echo $?",   -- check clipboard
+              "pngpaste - > %s"           -- save to temp file
+            }
+        elseif is_wayland() then
             command = { "wl-paste --list-types | grep -qi image/%s; echo $?", 
                         "wl-paste --no-newline --type image/%s > %s" }
         end
